@@ -1,0 +1,82 @@
+# Kserve Demonstration for Iris model
+
+### Create a new cluster or use an existing one to deploy kserve in a separate namespace
+
+- Follow the steps below:
+
+### Install Cert Manager if not already installed on the cluster
+
+```
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+```
+
+### Install KServe CRDs (First create ns kserve)
+
+```
+kubectl create namespace kserve
+
+helm install kserve-crd oci://ghcr.io/kserve/charts/kserve-crd \
+  --version v0.16.0 \
+  -n kserve \
+  --wait
+```
+
+### Install KServe controller
+
+```
+helm install kserve oci://ghcr.io/kserve/charts/kserve \
+  --version v0.16.0 \
+  -n kserve \
+  --set kserve.controller.deploymentMode=RawDeployment \
+  --wait
+```
+
+### Deploy the Intent Classifier model (First create ns intent or any name of your choice and make sure to update the storageUri before apply)
+
+```
+kubectl create namespace intent
+
+cat <<EOF | kubectl apply -n intent -f -
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: intent-classifier
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: sklearn
+      storageUri: "<downloadable location>"
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+EOF
+
+kubectl get inferenceservice intent-classifier -n intent
+```
+
+### Run the following commands:
+
+´´´
+kubectl get pods -n kserve
+
+kubectl get svc -n intent
+´´´
+
+### Port-forward to access the model
+
+```
+kubectl -n intent port-forward svc/<svc-name> 8080:80
+```
+
+### Inference the Model
+
+```
+curl -s -X POST http://localhost:8080/v1/models/intent-classifier:predict \
+  -H "Content-Type: application/json" \
+  -d '{"instances":["I want to cancel my subscription"]}' | jq
+```
